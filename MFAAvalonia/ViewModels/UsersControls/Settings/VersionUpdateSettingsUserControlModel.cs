@@ -38,7 +38,11 @@ public partial class VersionUpdateSettingsUserControlModel : ViewModelBase
             MaaFwVersion = "v5.0.0";
             LoggerHelper.Error($"读取 MaaFramework 版本失败，已回退默认值：原因={e.Message}", e);
         }
-        LanguageHelper.LanguageChanged += (_, _) => UpdateCdkExpireDisplay();
+        LanguageHelper.LanguageChanged += (_, _) =>
+        {
+            UpdateCdkExpireDisplay();
+            MfaVersion = BuildVersionDisplay.GetDisplayVersion(RootViewModel.Version, LangKeys.SelfBuildVersion.ToLocalization());
+        };
         ConfigurationManager.ConfigurationSwitched += OnConfigurationSwitched;
         RefreshDebugActionsVisibility();
         StopCountdownTimer();
@@ -65,7 +69,8 @@ public partial class VersionUpdateSettingsUserControlModel : ViewModelBase
     }
 
     [ObservableProperty] private string _maaFwVersion = "";
-    [ObservableProperty] private string _mfaVersion = RootViewModel.Version;
+    [ObservableProperty] private string _mfaVersion =
+        BuildVersionDisplay.GetDisplayVersion(RootViewModel.Version, LangKeys.SelfBuildVersion.ToLocalization());
     [ObservableProperty] private string _resourceVersion = string.Empty;
     [ObservableProperty] private bool _showResourceVersion;
     [ObservableProperty] private long _cdkExpiredTime = 0;

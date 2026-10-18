@@ -33,6 +33,12 @@
     </PropertyGroup>
 
     <!-- Version -->
+    <ItemGroup Condition="'$(MfaBuildLabel)' != ''">
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>MfaBuildLabel</_Parameter1>
+            <_Parameter2>$(MfaBuildLabel)</_Parameter2>
+        </AssemblyAttribute>
+    </ItemGroup>
     <PropertyGroup>
         <ApplicationRevision>0</ApplicationRevision>
         <ApplicationVersion>2.14.0.0</ApplicationVersion>

@@ -17,6 +17,9 @@ RIDS = ("win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm6
 STAMP = "mfaa-build.json"
 MANIFEST = "fork-release.json"
 STATE = Path("fork-release-state.json")
+UPSTREAM_VERSION = re.compile(
+    r"v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
 
 
 def command(*args, **kwargs):
@@ -42,7 +45,7 @@ def validate_info(info):
     sha = info.get("commit", "")
     short = info.get("short_commit", "")
     upstream = info.get("upstream_tag", "")
-    base = re.fullmatch(r"v(\d+\.\d+\.\d+)(?:[-+][\w.-]+)?", upstream)
+    base = UPSTREAM_VERSION.fullmatch(upstream)
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or short != sha[:6] or not base:
         raise ValueError("Invalid commit or upstream version")
     if info.get("tag") != f"v{base[1]}-mfbd2.g{short}":
@@ -51,7 +54,7 @@ def validate_info(info):
 
 
 def build_info(sha, upstream):
-    base = re.fullmatch(r"v(\d+\.\d+\.\d+)(?:[-+][\w.-]+)?", upstream)
+    base = UPSTREAM_VERSION.fullmatch(upstream)
     if not base:
         raise ValueError("No recognizable upstream version tag")
     return validate_info(dict(schema=1, repository=REPOSITORY, branch=BRANCH,
@@ -61,6 +64,14 @@ def build_info(sha, upstream):
 
 def read_info():
     return validate_info(json.loads(os.environ["MFAA_BUILD_INFO"]))
+
+
+def display_version(info):
+    validate_info(info)
+    upstream = info["upstream_tag"].split("+", 1)[0]
+    base, _, prerelease = upstream.partition("-")
+    suffix = f".{prerelease}" if prerelease else ""
+    return f"{base}-MFABD2{suffix} · {info['short_commit']}"
 
 
 def check_context(info=None):
@@ -203,7 +214,7 @@ def publish(root):
             f"Upstream version: `{info['upstream_tag']}`\n\n"
             f"Build: https://github.com/{REPOSITORY}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
     release = api(f"repos/{REPOSITORY}/releases", "POST", dict(
-        tag_name=tag, target_commitish=info["commit"], name=f"MFAAvalonia MFABD2 {tag}",
+        tag_name=tag, target_commitish=info["commit"], name=display_version(info),
         body=body, draft=True, prerelease=True, make_latest="false"))
     write_json(STATE, dict(id=release["id"], tag=tag, commit=info["commit"]))
     command("gh", "release", "upload", tag, *(str(root / item["name"]) for item in expected), "--repo", REPOSITORY)

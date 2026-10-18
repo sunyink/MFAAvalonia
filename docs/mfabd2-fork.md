@@ -40,3 +40,26 @@ The MFABD2 resource repository chooses an already-built package using the
 six-character selector. Its ordinary `requirements.txt` version remains the
 default when the optional override is empty. Client-side update behavior remains
 the upstream behavior.
+
+## Displayed version and upstream updates
+
+Version settings, the default window title, and new release titles show, for
+example, `v2.16.3-MFABD2.beta.1 · abcdef`. `beta.1` is copied from the upstream
+source version; it is not an independent fork counter. Each fork build is
+identified by its exact six-character source commit. A stable upstream baseline
+is displayed as `v2.16.3-MFABD2 · abcdef`, and the fork package remains a prerelease.
+
+The package tag and asset names still use `v2.16.3-mfbd2.gabcdef`, so existing
+resource-side six-character selection and published packages remain compatible.
+The UI reads the package manifest only if its full commit matches the running
+assembly. A stale manifest is ignored after an official client replacement.
+Local test builds may supply `-p:MfaBuildLabel=...`; those show an explicit
+localized self-built/dev label instead of claiming a packaged release identity.
+
+The displayed label is separate from `RootViewModel.Version`. Upstream update
+checks, minimum-version checks and `PI_CLIENT_VERSION` continue to use the
+upstream compatibility version, currently `v2.16.3-beta.1`. Never insert the fork
+name or a fork beta counter into that field. A new official `beta.2` or stable
+`v2.16.3` therefore compares newer regardless of how many fork builds were made.
+An official release equal to the compatibility version is not a new version;
+reinstalling that same version remains a manual action.

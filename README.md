@@ -214,6 +214,14 @@ MFAAvalonia 在 Project Interface V2 的 `task` 项中额外支持以下字段�
 
 呈现方式取值为 `SideBlend`、`CenteredBlend`、`Blurred`，方向为 `Left`、`Right`、`Top`、`Bottom`，图片强度为0至1，虚化程度为0至60。这些是客户端配置，不是 `interface.json` 的任务选项。
 
+### 自编译版本标识
+
+本地验证构建可传入`-p:MfaBuildLabel=PR260-dev`，版本设置页和默认窗口标题会明确显示自编译标识。
+自家包的`mfaa-build.json`仅在完整提交与当前UI程序集一致时用于显示标签，避免更新客户端后沿用旧标记。
+该显示文字独立于更新比较、资源最低版本检查及`PI_CLIENT_VERSION`，不会递增或替换官方兼容版本号。
+MFABD2自家包显示为`v2.16.3-MFABD2.beta.1 · abcdef`；`beta.1`沿用上游基线，六位提交号区分自家构建。
+发布标签与包文件名仍用`v2.16.3-mfbd2.gabcdef`，具体规则见[自家构建说明](docs/mfabd2-fork.md)。
+
 ### 自定义图标
 
 将 `logo.ico` 放置在程序根目录的 `Assets` 文件夹中，即可替换 MFAAvalonia 的窗口和托盘图标。

@@ -957,6 +957,9 @@
     <data name="SoftwareVersion" xml:space="preserve">
         <value>软件版本</value>
     </data>
+    <data name="SelfBuildVersion" xml:space="preserve">
+            <value>自编译 / dev：{0}</value>
+    </data>
     <data name="StartTask" xml:space="preserve">
         <value>开始任务</value>
     </data>

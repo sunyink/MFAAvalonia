@@ -1381,6 +1381,9 @@
   <data name="SoftwareVersion" xml:space="preserve">
         <value>ソフトウェアバージョン</value>
     </data>
+  <data name="SelfBuildVersion" xml:space="preserve">
+        <value>独自ビルド / dev: {0}</value>
+    </data>
   <data name="StartupParameter" xml:space="preserve">
         <value>起動パラメータ</value>
     </data>

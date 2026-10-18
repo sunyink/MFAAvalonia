@@ -21,6 +21,16 @@ def info_for(tag="v2.14.0"):
 
 
 class BuildMetadataTests(unittest.TestCase):
+    def test_display_version_preserves_upstream_baseline_and_commit(self):
+        for upstream, expected in (
+            ("v2.16.3-beta.1", "v2.16.3-MFABD2.beta.1 · 00000a"),
+            ("v2.16.3-beta.5", "v2.16.3-MFABD2.beta.5 · 00000a"),
+            ("v2.16.3", "v2.16.3-MFABD2 · 00000a"),
+            ("v2.16.3-rc.2+build.7", "v2.16.3-MFABD2.rc.2 · 00000a"),
+        ):
+            with self.subTest(upstream=upstream):
+                self.assertEqual(expected, fork_release.display_version(info_for(upstream)))
+
     def test_official_and_beta_tags_preserve_six_digit_prefix(self):
         for upstream in ("v2.14.0", "v2.14.0-beta.3"):
             with self.subTest(upstream=upstream):

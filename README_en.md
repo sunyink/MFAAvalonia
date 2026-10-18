@@ -214,6 +214,18 @@ A first-launch `config/config.template.json` can preset these client settings:
 
 Presentation values are `SideBlend`, `CenteredBlend`, and `Blurred`; placement values are `Left`, `Right`, `Top`, and `Bottom`. Strength ranges from 0 to 1 and blur from 0 to 60. These are client settings, not task options in `interface.json`.
 
+### Self-built version labels
+
+Local verification builds can pass `-p:MfaBuildLabel=PR260-dev` to identify themselves
+in version settings and the default window title. A package's `mfaa-build.json` is
+used only when its complete source commit matches the running UI assembly, so a
+replacement client does not inherit a stale label. This display is separate from
+update comparisons, resource minimum-version checks, and `PI_CLIENT_VERSION`.
+MFABD2 packages display `v2.16.3-MFABD2.beta.1 · abcdef`: the prerelease suffix
+comes from the upstream baseline, and six commit characters identify the fork
+build. Package tags and filenames retain `v2.16.3-mfbd2.gabcdef`; see the
+[fork build guide](docs/mfabd2-fork.md).
+
 ### Custom icon
 
 Place `logo.ico` in the `Assets` folder under the application root to replace the MFAAvalonia window and tray icons.

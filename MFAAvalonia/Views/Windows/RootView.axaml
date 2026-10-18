@@ -197,7 +197,7 @@
                     <x:Static Member="helper:LangKeys.AppTitle" />
                 </x:Arguments>
             </markup:I18nBinding>
-            <Binding Path="Version" />
+            <Binding Path="DisplayVersion" />
             <Binding Path="ResourceName" />
             <Binding Path="ResourceVersion" />
             <Binding Path="IsResourceNameVisible" />

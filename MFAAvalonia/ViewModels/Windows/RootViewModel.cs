@@ -30,6 +30,7 @@ public partial class RootViewModel : ViewModelBase
             HookActiveInstanceState();
             CheckDebug();
         });
+        LanguageHelper.LanguageChanged += (_, _) => OnPropertyChanged(nameof(DisplayVersion));
     }
 
     [ObservableProperty] private bool _idle = true;
@@ -108,6 +109,9 @@ public partial class RootViewModel : ViewModelBase
             return "v2.16.3-beta.1"; // Hardcoded version for now, replace with dynamic versioning later
         }
     }
+
+    public static string DisplayVersion =>
+        BuildVersionDisplay.GetDisplayVersion(Version, LangKeys.SelfBuildVersion.ToLocalization());
 
     [ObservableProperty] private Action? _tempResourceUpdateAction;
    

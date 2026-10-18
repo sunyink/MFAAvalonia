@@ -324,6 +324,7 @@ public static class LangKeys
 	public static readonly string SoftwarePath = "SoftwarePath";
 	public static readonly string SoftwareUpdate = "SoftwareUpdate";
 	public static readonly string SoftwareVersion = "SoftwareVersion";
+	public static readonly string SelfBuildVersion = "SelfBuildVersion";
 	public static readonly string StartTask = "StartTask";
 	public static readonly string StartupParameter = "StartupParameter";
 	public static readonly string StartupScript = "StartupScript";

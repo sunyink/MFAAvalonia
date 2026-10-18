@@ -948,6 +948,9 @@
     <data name="SoftwareVersion" xml:space="preserve">
         <value>軟體版本</value>
     </data>
+    <data name="SelfBuildVersion" xml:space="preserve">
+        <value>自行編譯 / dev：{0}</value>
+    </data>
     <data name="StartTask" xml:space="preserve">
         <value>開始任務</value>
     </data>
