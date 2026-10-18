@@ -1,0 +1,113 @@
+name: Build MFABD2 prerelease
+run-name: MFABD2 prerelease from mfabd2 (${{ github.sha }})
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mfabd2-fork-release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    if: github.repository == 'sunyink/MFAAvalonia' && github.ref == 'refs/heads/mfabd2'
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.meta.outputs.commit }}
+      tag: ${{ steps.meta.outputs.tag }}
+      info: ${{ steps.meta.outputs.info }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Verify fork publication rules
+        run: python scripts/test_fork_release.py
+      - name: Lock source and prerelease name
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/fork_release.py metadata
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-latest
+            rid: win-arm64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: ubuntu-latest
+            rid: linux-arm64
+          - os: macos-latest
+            rid: osx-x64
+          - os: macos-latest
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      MFAA_BUILD_INFO: ${{ needs.meta.outputs.info }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.meta.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Publish desktop client
+        run: dotnet publish MFAAvalonia.Desktop/MFAAvalonia.Desktop.csproj -c Release -r ${{ matrix.rid }} -o publish
+      - name: Sign macOS executables
+        if: startsWith(matrix.rid, 'osx-')
+        shell: bash
+        run: |
+          find publish -type f -name 'MFAAvalonia*' -exec codesign -s - --force --deep {} \;
+          find publish -type f -name 'MFAUpdater*' -exec codesign -s - --force --deep {} \;
+          find publish -type f -name 'MFAAvalonia*' -exec codesign -v {} \;
+      - name: Package with exact source metadata
+        run: python scripts/fork_release.py package --publish-dir publish --output artifacts --rid ${{ matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fork-${{ matrix.rid }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MFAA_BUILD_INFO: ${{ needs.meta.outputs.info }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.meta.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fork-*
+          merge-multiple: true
+          path: artifacts
+      - name: Upload draft, verify every asset, publish prerelease
+        run: python scripts/fork_release.py publish --assets artifacts
+      - name: Remove only this run's unpublished draft
+        if: failure() || cancelled()
+        run: python scripts/fork_release.py cleanup
