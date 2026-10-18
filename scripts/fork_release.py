@@ -85,14 +85,27 @@ def asset_name(info, rid):
 def metadata():
     check_context()
     sha = command("git", "rev-parse", "HEAD")
-    upstream = command("git", "describe", "--tags", "--match", "v[0-9]*",
-                       "--exclude", "*-mfbd2.*", "--abbrev=0", sha)
+    # A fork's copied tags can lag behind its merged source. Keep upstream tag
+    # names separate from local/fork tags; describe only ancestors of this SHA.
+    command("git", "fetch", "--no-tags", "https://github.com/MaaXYZ/MFAAvalonia.git",
+            "refs/tags/v*:refs/tags/upstream/v*")
+    upstream = command("git", "describe", "--tags", "--match", "upstream/v[0-9]*",
+                       "--exclude", "upstream/*-mfbd2.*", "--abbrev=0", sha).removeprefix("upstream/")
     info = build_info(sha, upstream)
     check_context(info)
     # Resolve the requested six characters remotely as well, so ambiguous prefixes fail.
     resolved = api(f"repos/{REPOSITORY}/commits/{info['short_commit']}")["sha"]
     if resolved != sha:
         raise ValueError("Six-character commit is ambiguous or resolves to another commit")
+    page = 1
+    while True:
+        releases = api(f"repos/{REPOSITORY}/releases?per_page=100&page={page}")
+        if any(re.fullmatch(rf"v\d+\.\d+\.\d+-mfbd2\.g{info['short_commit']}", release["tag_name"])
+               for release in releases):
+            raise ValueError("This commit already has a fork release; reuse it instead of creating another version name")
+        if len(releases) < 100:
+            break
+        page += 1
     tag = quote(info["tag"], safe="")
     if api(f"repos/{REPOSITORY}/releases/tags/{tag}", missing_ok=True) is not None:
         raise ValueError(f"Release {info['tag']} already exists; existing packages are never overwritten")

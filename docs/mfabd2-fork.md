@@ -17,7 +17,8 @@ There is no arbitrary source branch or stable-release input. Each run builds the
 exact commit selected when it was dispatched, even if the branch advances later.
 
 Packages use names such as `v2.16.3-mfbd2.g4e22d1`. The numeric prefix comes from
-the nearest upstream version tag; the suffix is exactly six hexadecimal commit
+the nearest upstream version tag (fetched from MaaXYZ into a separate local tag
+namespace, so stale fork tags do not select an old version); the suffix is exactly six hexadecimal commit
 characters. Ambiguous short commits fail instead of silently lengthening the ID.
 Releases always have `prerelease: true` and `make_latest: false`. Existing releases
 are never replaced. A failed run removes only the draft it created, retaining
