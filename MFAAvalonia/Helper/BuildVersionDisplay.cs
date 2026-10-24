@@ -61,7 +61,10 @@ public static class BuildVersionDisplay
                 // Ignore a stale fork manifest after the client has been replaced by an official build.
                 || informationalVersion == null || !informationalVersion.EndsWith($"+{commit}", StringComparison.OrdinalIgnoreCase))
                 return null;
-            return FormatPackageLabel(repository, ReadString(root, "upstream_tag"), tag, shortCommit!);
+            int? sequence = root.TryGetProperty("fork_sequence", out var number)
+                && number.ValueKind == JsonValueKind.Number && number.TryGetInt32(out var parsed) && parsed > 0
+                    ? parsed : null;
+            return FormatPackageLabel(repository, ReadString(root, "upstream_tag"), tag, shortCommit!, sequence);
         }
         catch (JsonException)
         {
@@ -69,19 +72,18 @@ public static class BuildVersionDisplay
         }
     }
 
-    private static string FormatPackageLabel(string repository, string? upstreamVersion, string tag, string shortCommit)
+    private static string FormatPackageLabel(string repository, string? upstreamVersion, string tag, string shortCommit, int? sequence)
     {
         if (!repository.Equals("sunyink/MFAAvalonia", StringComparison.OrdinalIgnoreCase) || upstreamVersion == null)
             return tag;
         var version = Regex.Match(upstreamVersion,
             "\\Av(?<base>[0-9]+\\.[0-9]+\\.[0-9]+)(?:-(?<pre>[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\z");
-        if (!version.Success || tag != $"v{version.Groups["base"].Value}-mfbd2.g{shortCommit}")
+        if (!version.Success || tag != $"v{version.Groups["base"].Value}-mfbd2.g{shortCommit}" || sequence == null)
             return tag;
-        var prerelease = version.Groups["pre"].Value;
-        var suffix = string.IsNullOrEmpty(prerelease) ? "" : $".{prerelease}";
-        // The upstream prerelease identifies the source baseline, not a fork counter.
+        // Only the numeric baseline comes from upstream. The beta counter is
+        // reserved by our own Git tag and shared with the release/package metadata.
         // This label never enters the updater or PI_CLIENT_VERSION.
-        return $"v{version.Groups["base"].Value}-MFABD2{suffix} · {shortCommit}";
+        return $"v{version.Groups["base"].Value}-MFABD2.beta.{sequence} · {shortCommit}";
     }
 
     private static string? ReadString(JsonElement root, string name) =>

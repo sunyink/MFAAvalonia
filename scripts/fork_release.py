@@ -50,15 +50,19 @@ def validate_info(info):
         raise ValueError("Invalid commit or upstream version")
     if info.get("tag") != f"v{base[1]}-mfbd2.g{short}":
         raise ValueError("Fork tags must contain mfbd2 and exactly six commit characters")
+    sequence = info.get("fork_sequence")
+    if type(sequence) is not int or not 1 <= sequence <= 2147483647:
+        raise ValueError("Fork beta sequence must be a positive 32-bit integer")
     return info
 
 
-def build_info(sha, upstream):
+def build_info(sha, upstream, sequence):
     base = UPSTREAM_VERSION.fullmatch(upstream)
     if not base:
         raise ValueError("No recognizable upstream version tag")
     return validate_info(dict(schema=1, repository=REPOSITORY, branch=BRANCH,
                               commit=sha, short_commit=sha[:6], upstream_tag=upstream,
+                              fork_sequence=sequence,
                               tag=f"v{base[1]}-mfbd2.g{sha[:6]}"))
 
 
@@ -66,12 +70,73 @@ def read_info():
     return validate_info(json.loads(os.environ["MFAA_BUILD_INFO"]))
 
 
-def display_version(info):
+def version_tag(info):
     validate_info(info)
-    upstream = info["upstream_tag"].split("+", 1)[0]
-    base, _, prerelease = upstream.partition("-")
-    suffix = f".{prerelease}" if prerelease else ""
-    return f"{base}-MFABD2{suffix} · {info['short_commit']}"
+    base = UPSTREAM_VERSION.fullmatch(info["upstream_tag"])[1]
+    return f"v{base}-MFABD2.beta.{info['fork_sequence']}"
+
+
+def display_version(info):
+    return f"{version_tag(info)} · {info['short_commit']}"
+
+
+def upstream_tag_at(sha):
+    # Tags fetched from upstream may be ahead of this branch. Only ancestry of
+    # the packaged commit determines its baseline; never read upstream releases.
+    return command("git", "describe", "--tags", "--match", "upstream/v[0-9]*",
+                   "--exclude", "upstream/*-mfbd2.*", "--abbrev=0", sha).removeprefix("upstream/")
+
+
+def fork_tags():
+    result = {}
+    for ref in command("git", "for-each-ref", "--format=%(refname)", "refs/tags/fork/").splitlines():
+        name = ref.removeprefix("refs/tags/fork/")
+        if re.fullmatch(r"v\d+\.\d+\.\d+-(?:MFABD2\.beta\.[1-9]\d*|mfbd2\.g[0-9a-f]{6})", name):
+            result[name] = command("git", "rev-parse", f"{ref}^{{commit}}")
+    return result
+
+
+def fork_sequence(sha, upstream, tags):
+    base = UPSTREAM_VERSION.fullmatch(upstream)
+    if not base:
+        raise ValueError("No recognizable upstream version tag")
+    baseline = f"v{base[1]}"
+    reserved = []
+    maximum = 0
+    package_count = 0
+    for tag, commit in tags.items():
+        number = re.fullmatch(r"(v\d+\.\d+\.\d+)-MFABD2\.beta\.([1-9]\d*)", tag)
+        if number:
+            if commit == sha:
+                if number[1] != baseline:
+                    raise ValueError("This source already has a reserved fork version under another baseline")
+                reserved.append(int(number[2]))
+            if number[1] == baseline:
+                maximum = max(maximum, int(number[2]))
+        elif re.fullmatch(rf"{re.escape(baseline)}-mfbd2\.g[0-9a-f]{{6}}", tag):
+            # The package count supplies a floor for pre-numbering builds.
+            # Keep their tags, including after a release is removed.
+            if not tag.endswith(f".g{commit[:6]}"):
+                raise ValueError("Fork package tag points to a different source")
+            package_count += 1
+    if len(reserved) > 1:
+        raise ValueError("This source has more than one reserved fork version")
+    return reserved[0] if reserved else max(maximum, package_count) + 1
+
+
+def reserve_version(info):
+    tag = version_tag(info)
+    path = f"repos/{REPOSITORY}/git/ref/tags/{quote(tag, safe='')}"
+    if api(path, missing_ok=True) is None:
+        # Atomic ref creation rejects competing reservations. Never move or
+        # remove this tag: failed builds reuse it; other sources advance past it.
+        api(f"repos/{REPOSITORY}/git/refs", "POST", dict(ref=f"refs/tags/{tag}", sha=info["commit"]))
+    verify_version(info)
+
+
+def verify_version(info):
+    if api(f"repos/{REPOSITORY}/commits/{quote(version_tag(info), safe='')}")["sha"] != info["commit"]:
+        raise ValueError("Fork beta number is reserved for another source")
 
 
 def check_context(info=None):
@@ -100,9 +165,10 @@ def metadata():
     # names separate from local/fork tags; describe only ancestors of this SHA.
     command("git", "fetch", "--no-tags", "https://github.com/MaaXYZ/MFAAvalonia.git",
             "refs/tags/v*:refs/tags/upstream/v*")
-    upstream = command("git", "describe", "--tags", "--match", "upstream/v[0-9]*",
-                       "--exclude", "upstream/*-mfbd2.*", "--abbrev=0", sha).removeprefix("upstream/")
-    info = build_info(sha, upstream)
+    command("git", "fetch", "--no-tags", f"https://github.com/{REPOSITORY}.git",
+            "refs/tags/v*:refs/tags/fork/v*")
+    upstream = upstream_tag_at(sha)
+    info = build_info(sha, upstream, fork_sequence(sha, upstream, fork_tags()))
     check_context(info)
     # Resolve the requested six characters remotely as well, so ambiguous prefixes fail.
     resolved = api(f"repos/{REPOSITORY}/commits/{info['short_commit']}")["sha"]
@@ -123,6 +189,7 @@ def metadata():
     existing_tag = api(f"repos/{REPOSITORY}/git/ref/tags/{tag}", missing_ok=True)
     if existing_tag and api(f"repos/{REPOSITORY}/commits/{tag}")["sha"] != sha:
         raise ValueError("Release tag already belongs to another commit")
+    reserve_version(info)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         stream.write(f"commit={sha}\ntag={info['tag']}\ninfo={json.dumps(info)}\n")
     print(json.dumps(info, indent=2))
@@ -201,6 +268,7 @@ def verify_uploaded(expected, actual):
 def publish(root):
     info = read_info()
     check_context(info)
+    verify_version(info)
     packages = collect_assets(root, info)
     write_json(root / MANIFEST, dict(info, packages=packages))
     expected = packages + [dict(name=MANIFEST, size=(root / MANIFEST).stat().st_size,
@@ -211,7 +279,8 @@ def publish(root):
     body = (f"MFABD2 fork desktop prerelease; not an official MFAAvalonia release.\n\n"
             f"Source branch: `{BRANCH}`\n\nCommit: `{info['commit']}`\n\n"
             f"Six-character build selector: `{info['short_commit']}`\n\n"
-            f"Upstream version: `{info['upstream_tag']}`\n\n"
+            f"Fork version: `{version_tag(info)}`\n\n"
+            f"Upstream ancestor tag: `{info['upstream_tag']}`\n\n"
             f"Build: https://github.com/{REPOSITORY}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
     release = api(f"repos/{REPOSITORY}/releases", "POST", dict(
         tag_name=tag, target_commitish=info["commit"], name=display_version(info),

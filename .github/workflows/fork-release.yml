@@ -8,13 +8,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: mfabd2-fork-release-${{ github.sha }}
+  group: mfabd2-fork-release
   cancel-in-progress: false
 
 jobs:
   meta:
     if: github.repository == 'sunyink/MFAAvalonia' && github.ref == 'refs/heads/mfabd2'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       commit: ${{ steps.meta.outputs.commit }}
       tag: ${{ steps.meta.outputs.tag }}
