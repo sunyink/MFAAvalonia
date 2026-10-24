@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <root>
     <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
@@ -2314,12 +2314,5 @@
   <data name="RestoreGroupResourceDefaults" xml:space="preserve"><value>恢复本组资源默认值</value></data>
   <data name="RestoreResourceDefaultsConfirmation" xml:space="preserve"><value>将“{0}”中 {1} 项已修改的内容恢复为资源默认值。此操作使用资源声明的默认值，不是预设值；未声明默认值的字段和子选项设置会保留。</value></data>
   <data name="RestoreResourceDefaultsConfirm" xml:space="preserve"><value>恢复本组</value></data>
+  <data name="ResumeInterruptedQueue" xml:space="preserve"><value>重新启动队列时，从上次未完成的任务继续（自动跳过已成功的任务）</value></data>
 </root>
-
-
-
-
-
-
-
-

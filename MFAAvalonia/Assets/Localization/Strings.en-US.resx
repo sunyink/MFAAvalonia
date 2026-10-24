@@ -1,4 +1,4 @@
-<root>
+﻿<root>
     <resheader name="resmimetype">
         <value>text/microsoft-resx</value>
     </resheader>
@@ -2304,6 +2304,7 @@ Update using this archive?</value>
   <data name="RestoreGroupResourceDefaults" xml:space="preserve"><value>Restore this group to resource defaults</value></data>
   <data name="RestoreResourceDefaultsConfirmation" xml:space="preserve"><value>Restore {1} changed item(s) in “{0}” to the defaults declared by the resource, rather than preset values. Fields without declared defaults and sub-option settings will be kept.</value></data>
   <data name="RestoreResourceDefaultsConfirm" xml:space="preserve"><value>Restore group</value></data>
+  <data name="ResumeInterruptedQueue" xml:space="preserve"><value>When restarting the queue, resume from the first unfinished task (succeeded tasks are skipped)</value></data>
 </root>
 
 

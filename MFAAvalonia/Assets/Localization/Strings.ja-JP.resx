@@ -1,4 +1,4 @@
-<root>
+﻿<root>
   <resheader name="resmimetype">
     <value>text/microsoft-resx</value>
   </resheader>
@@ -2299,4 +2299,5 @@
   <data name="RestoreGroupResourceDefaults" xml:space="preserve"><value>このグループをリソースの既定値に戻す</value></data>
   <data name="RestoreResourceDefaultsConfirmation" xml:space="preserve"><value>「{0}」で変更された {1} 項目を、プリセットではなくリソースに定義された既定値に戻します。既定値のない項目とサブオプションの設定は保持されます。</value></data>
   <data name="RestoreResourceDefaultsConfirm" xml:space="preserve"><value>グループを戻す</value></data>
+  <data name="ResumeInterruptedQueue" xml:space="preserve"><value>キューを再開するとき、前回未完了のタスクから再開（成功済みタスクはスキップ）</value></data>
 </root>

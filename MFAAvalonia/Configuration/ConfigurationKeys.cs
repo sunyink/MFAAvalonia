@@ -106,6 +106,7 @@ public static class ConfigurationKeys
     public const string Prescript = "Prescript";
     public const string Postscript = "Post-script";
     public const string ContinueRunningWhenError = "ContinueRunningWhenError";
+    public const string ResumeInterruptedQueue = "ResumeInterruptedQueue";
     public const string UseSeparateScreenshotTasker = "UseSeparateScreenshotTasker";
 
     #endregion
@@ -263,6 +264,7 @@ public static class ConfigurationKeys
         Prescript,
         Postscript,
         ContinueRunningWhenError,
+        ResumeInterruptedQueue,
         UseSeparateScreenshotTasker,
         AgentTcpMode
     };
