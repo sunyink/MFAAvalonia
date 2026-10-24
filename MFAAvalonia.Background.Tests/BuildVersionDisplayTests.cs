@@ -27,6 +27,32 @@ public class BuildVersionDisplayTests
     }
 
     [Theory]
+    [InlineData(6)]
+    [InlineData(10)]
+    public void NumberedReleaseUsesOneVersionForTheTagAndClient(int sequence)
+    {
+        var manifest = JsonSerializer.Serialize(new { schema = 2, repository = "sunyink/MFAAvalonia",
+            commit = Commit, short_commit = Commit[..6], upstream_version = "v2.16.3", fork_sequence = sequence,
+            tag = $"v2.16.3-MFABD2.beta.{sequence}" });
+        Assert.Equal($"v2.16.3-MFABD2.beta.{sequence} · fb5b80",
+            BuildVersionDisplay.ResolveLabel(null, $"2.14.0+{Commit}", manifest));
+    }
+
+    [Theory]
+    [InlineData("v2.16.3-beta.1", 6, "v2.16.3-MFABD2.beta.6")]
+    [InlineData("v2.16.4", 6, "v2.16.3-MFABD2.beta.6")]
+    [InlineData("v2.16.3", 5, "v2.16.3-MFABD2.beta.6")]
+    [InlineData("v2.16.3", 0, "v2.16.3-MFABD2.beta.0")]
+    [InlineData("v2.16.3", "6", "v2.16.3-MFABD2.beta.6")]
+    [InlineData("v2.16.3", 6, "v2.16.3-mfbd2.gfb5b80")]
+    public void NumberedReleaseRejectsMixedBaselineCounterOrLegacyTag(string upstream, object sequence, string tag)
+    {
+        var manifest = JsonSerializer.Serialize(new { schema = 2, repository = "sunyink/MFAAvalonia",
+            commit = Commit, short_commit = Commit[..6], upstream_version = upstream, fork_sequence = sequence, tag });
+        Assert.Null(BuildVersionDisplay.ResolveLabel(null, $"2.14.0+{Commit}", manifest));
+    }
+
+    [Theory]
     [InlineData("v2.16.3", "v2.16.3-MFABD2.beta.7 · fb5b80")]
     [InlineData("v2.16.3-beta.1", "v2.16.3-MFABD2.beta.7 · fb5b80")]
     [InlineData("v2.16.3-beta.5", "v2.16.3-MFABD2.beta.7 · fb5b80")]

@@ -46,7 +46,7 @@ public static class BuildVersionDisplay
             using var document = JsonDocument.Parse(manifest);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("schema", out var schema)
-                || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var schemaVersion) || schemaVersion != 1)
+                || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var schemaVersion) || schemaVersion is not (1 or 2))
                 return null;
             var repository = ReadString(root, "repository");
             var commit = ReadString(root, "commit");
@@ -57,13 +57,23 @@ public static class BuildVersionDisplay
                 || commit == null || !Regex.IsMatch(commit, "\\A[0-9a-f]{40}\\z")
                 || shortCommit != commit[..6] || tag == null || tag.Length > 128
                 || !Regex.IsMatch(tag, "\\Av[0-9A-Za-z.+-]+\\z")
-                || !tag.EndsWith($".g{shortCommit}", StringComparison.Ordinal)
                 // Ignore a stale fork manifest after the client has been replaced by an official build.
                 || informationalVersion == null || !informationalVersion.EndsWith($"+{commit}", StringComparison.OrdinalIgnoreCase))
                 return null;
             int? sequence = root.TryGetProperty("fork_sequence", out var number)
                 && number.ValueKind == JsonValueKind.Number && number.TryGetInt32(out var parsed) && parsed > 0
                     ? parsed : null;
+            if (schemaVersion == 2)
+            {
+                var upstream = ReadString(root, "upstream_version");
+                if (!repository.Equals("sunyink/MFAAvalonia", StringComparison.OrdinalIgnoreCase)
+                    || upstream == null || !Regex.IsMatch(upstream, "\\Av[0-9]+\\.[0-9]+\\.[0-9]+\\z")
+                    || sequence == null || tag != $"{upstream}-MFABD2.beta.{sequence}")
+                    return null;
+                return $"{tag} · {shortCommit}";
+            }
+            if (!tag.EndsWith($".g{shortCommit}", StringComparison.Ordinal))
+                return null;
             return FormatPackageLabel(repository, ReadString(root, "upstream_tag"), tag, shortCommit!, sequence);
         }
         catch (JsonException)

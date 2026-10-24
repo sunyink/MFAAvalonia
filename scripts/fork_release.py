@@ -40,19 +40,19 @@ def api(path, method="GET", payload=None, missing_ok=False):
 
 
 def validate_info(info):
-    if info.get("schema") != 1 or info.get("repository") != REPOSITORY or info.get("branch") != BRANCH:
+    if info.get("schema") != 2 or info.get("repository") != REPOSITORY or info.get("branch") != BRANCH:
         raise ValueError("Not an mfabd2 fork build")
     sha = info.get("commit", "")
     short = info.get("short_commit", "")
-    upstream = info.get("upstream_tag", "")
-    base = UPSTREAM_VERSION.fullmatch(upstream)
+    upstream = info.get("upstream_version", "")
+    base = re.fullmatch(r"v(\d+\.\d+\.\d+)", upstream)
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or short != sha[:6] or not base:
         raise ValueError("Invalid commit or upstream version")
-    if info.get("tag") != f"v{base[1]}-mfbd2.g{short}":
-        raise ValueError("Fork tags must contain mfbd2 and exactly six commit characters")
     sequence = info.get("fork_sequence")
     if type(sequence) is not int or not 1 <= sequence <= 2147483647:
         raise ValueError("Fork beta sequence must be a positive 32-bit integer")
+    if info.get("tag") != f"{upstream}-MFABD2.beta.{sequence}":
+        raise ValueError("The release, packages and client must use the same numbered fork tag")
     return info
 
 
@@ -60,10 +60,10 @@ def build_info(sha, upstream, sequence):
     base = UPSTREAM_VERSION.fullmatch(upstream)
     if not base:
         raise ValueError("No recognizable upstream version tag")
-    return validate_info(dict(schema=1, repository=REPOSITORY, branch=BRANCH,
-                              commit=sha, short_commit=sha[:6], upstream_tag=upstream,
+    return validate_info(dict(schema=2, repository=REPOSITORY, branch=BRANCH,
+                              commit=sha, short_commit=sha[:6], upstream_version=f"v{base[1]}",
                               fork_sequence=sequence,
-                              tag=f"v{base[1]}-mfbd2.g{sha[:6]}"))
+                              tag=f"v{base[1]}-MFABD2.beta.{sequence}"))
 
 
 def read_info():
@@ -72,12 +72,21 @@ def read_info():
 
 def version_tag(info):
     validate_info(info)
-    base = UPSTREAM_VERSION.fullmatch(info["upstream_tag"])[1]
-    return f"v{base}-MFABD2.beta.{info['fork_sequence']}"
+    return info["tag"]
 
 
 def display_version(info):
     return f"{version_tag(info)} · {info['short_commit']}"
+
+
+def release_notes(info, run_id):
+    validate_info(info)
+    return (f"MFABD2 自家客户端预发布。上游基础版本：`{info['upstream_version']}`。\n\n"
+            "请按系统和处理器选择下方安装包；普通 64 位 Windows 电脑使用 `win-x64.zip`。"
+            "GitHub 自动附带的 `Source code` 是源码。\n\n"
+            f"MFABD2 单次打包选用本版时，填写 **`{info['short_commit']}`**。\n\n"
+            f"[本次源码](https://github.com/{REPOSITORY}/commit/{info['commit']}) · "
+            f"[六平台构建](https://github.com/{REPOSITORY}/actions/runs/{run_id})")
 
 
 def upstream_tag_at(sha):
@@ -168,7 +177,8 @@ def metadata():
     command("git", "fetch", "--no-tags", f"https://github.com/{REPOSITORY}.git",
             "refs/tags/v*:refs/tags/fork/v*")
     upstream = upstream_tag_at(sha)
-    info = build_info(sha, upstream, fork_sequence(sha, upstream, fork_tags()))
+    tags = fork_tags()
+    info = build_info(sha, upstream, fork_sequence(sha, upstream, tags))
     check_context(info)
     # Resolve the requested six characters remotely as well, so ambiguous prefixes fail.
     resolved = api(f"repos/{REPOSITORY}/commits/{info['short_commit']}")["sha"]
@@ -177,7 +187,8 @@ def metadata():
     page = 1
     while True:
         releases = api(f"repos/{REPOSITORY}/releases?per_page=100&page={page}")
-        if any(re.fullmatch(rf"v\d+\.\d+\.\d+-mfbd2\.g{info['short_commit']}", release["tag_name"])
+        if any(tags.get(release["tag_name"]) == sha
+               or re.fullmatch(rf"v\d+\.\d+\.\d+-mfbd2\.g{info['short_commit']}", release["tag_name"])
                for release in releases):
             raise ValueError("This commit already has a fork release; reuse it instead of creating another version name")
         if len(releases) < 100:
@@ -192,6 +203,7 @@ def metadata():
     reserve_version(info)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         stream.write(f"commit={sha}\ntag={info['tag']}\ninfo={json.dumps(info)}\n")
+    print(f"Source ancestor tag: {upstream}")
     print(json.dumps(info, indent=2))
 
 
@@ -276,12 +288,7 @@ def publish(root):
     tag = info["tag"]
     if api(f"repos/{REPOSITORY}/releases/tags/{quote(tag, safe='')}", missing_ok=True) is not None:
         raise ValueError("Release already exists; refusing to replace it")
-    body = (f"MFABD2 fork desktop prerelease; not an official MFAAvalonia release.\n\n"
-            f"Source branch: `{BRANCH}`\n\nCommit: `{info['commit']}`\n\n"
-            f"Six-character build selector: `{info['short_commit']}`\n\n"
-            f"Fork version: `{version_tag(info)}`\n\n"
-            f"Upstream ancestor tag: `{info['upstream_tag']}`\n\n"
-            f"Build: https://github.com/{REPOSITORY}/actions/runs/{os.environ['GITHUB_RUN_ID']}")
+    body = release_notes(info, os.environ['GITHUB_RUN_ID'])
     release = api(f"repos/{REPOSITORY}/releases", "POST", dict(
         tag_name=tag, target_commitish=info["commit"], name=display_version(info),
         body=body, draft=True, prerelease=True, make_latest="false"))

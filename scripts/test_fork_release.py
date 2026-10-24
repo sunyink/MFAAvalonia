@@ -36,8 +36,19 @@ class BuildMetadataTests(unittest.TestCase):
             with self.subTest(upstream=upstream):
                 info = info_for(upstream)
                 self.assertEqual(info["short_commit"], "00000a")
-                self.assertEqual(info["tag"], "v2.14.0-mfbd2.g00000a")
+                self.assertEqual(info["tag"], "v2.14.0-MFABD2.beta.7")
+                self.assertEqual(info["upstream_version"], "v2.14.0")
+                self.assertNotIn("upstream_tag", info)
+                self.assertEqual(fork_release.version_tag(info), info["tag"])
                 self.assertEqual(fork_release.validate_info(info), info)
+
+    def test_release_body_has_only_numeric_upstream_baseline_and_no_duplicate_title(self):
+        info = info_for("v2.16.3-beta.1", 6)
+        body = fork_release.release_notes(info, "12345")
+        self.assertIn("上游基础版本：`v2.16.3`", body)
+        self.assertNotIn("v2.16.3-beta.1", body)
+        self.assertNotIn(fork_release.display_version(info), body)
+        self.assertFalse(any(line.startswith("# ") for line in body.splitlines()))
 
     def test_validate_info_rejects_invalid_identity_and_tag_fields(self):
         mutations = (
@@ -46,6 +57,10 @@ class BuildMetadataTests(unittest.TestCase):
             ("commit", "a" * 40),
             ("short_commit", "00000"),
             ("tag", "v2.14.0"),
+            ("tag", "v2.14.0-mfbd2.g00000a"),
+            ("tag", "v2.14.0-MFABD2.beta.8"),
+            ("schema", 1),
+            ("upstream_version", "v2.14.0-beta.1"),
             ("fork_sequence", 0),
             ("fork_sequence", -1),
             ("fork_sequence", True),
