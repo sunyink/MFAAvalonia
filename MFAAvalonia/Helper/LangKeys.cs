@@ -744,6 +744,10 @@ public static class LangKeys
 	public static readonly string ImportInstanceConfigProjectMismatch = "ImportInstanceConfigProjectMismatch";
 	public static readonly string ImportInstanceConfigUnsupportedVersion = "ImportInstanceConfigUnsupportedVersion";
 	
+	public static readonly string RestoreInputResourceDefault = "RestoreInputResourceDefault";
+	public static readonly string RestoreGroupResourceDefaults = "RestoreGroupResourceDefaults";
+	public static readonly string RestoreResourceDefaultsConfirmation = "RestoreResourceDefaultsConfirmation";
+	public static readonly string RestoreResourceDefaultsConfirm = "RestoreResourceDefaultsConfirm";
 }
 
 
