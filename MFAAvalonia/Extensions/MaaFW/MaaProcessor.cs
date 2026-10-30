@@ -523,6 +523,7 @@ public class MaaProcessor
     public void Dispose()
     {
         _isClosed = true;
+        RestoreQueueAutoInactive();
         DetachScreenshotTasker(requireStopped: true);
         _detachedScreenshotCleanupCancellationTokenSource?.Cancel();
         _detachedScreenshotCleanupCancellationTokenSource?.Dispose();
@@ -657,6 +658,8 @@ public class MaaProcessor
     }
 
     public MaaTasker? MaaTasker { get; set; }
+    private MaaTasker? _queueAutoInactiveTasker;
+    private readonly Lock _queueAutoInactiveLock = new();
     private MaaTasker? _screenshotTasker;
     private Task<MaaTasker?>? _screenshotTaskerInitTask;
     private long _screenshotTaskerGeneration;
@@ -678,6 +681,8 @@ public class MaaProcessor
     public MaaTasker? ScreenshotTasker => _screenshotTasker;
     public void SetTasker(MaaTasker? maaTasker = null, bool requireAllStopped = false)
     {
+        if (!ReferenceEquals(MaaTasker, maaTasker))
+            RestoreQueueAutoInactive();
         ResetActionFailedCount();
         if (maaTasker == null)
         {
@@ -3685,11 +3690,13 @@ public class MaaProcessor
             await TaskManager.RunTaskAsync(async () =>
             {
                 var queueResult = await ExecuteTasks(token);
+                RestoreQueueAutoInactive();
                 Stop(Status, true, onlyStart, queueCompleted: queueResult.QueueCompleted);
             }, token: token, name: "启动任务");
         }
         finally
         {
+            RestoreQueueAutoInactive();
             if (!onlyStart)
             {
                 TelemetryService.FinishRun(InstanceId, Status);
@@ -4425,10 +4432,85 @@ public class MaaProcessor
     {
         if (maa == null || task == null) return MaaJobStatus.Invalid;
 
+        PauseQueueAutoInactive(maa);
         var job = maa.AppendTask(task, param ?? "{}");
         TelemetryService.SetActiveTaskId(InstanceId, job.Id);
         return await TaskManager.RunTaskAsync(() => job.Wait(), token, (ex) => throw ex,
             name: "队列任务", catchException: true, shouldLog: false);
+    }
+
+    private static bool SetTaskerAutoInactive(MaaTasker tasker, bool enabled)
+    {
+        // 5.10 绑定不接受新选项，直接调用已有底层入口。
+        const int autoInactive = 1;
+        byte[] value = [enabled ? (byte)1 : (byte)0];
+        try
+        {
+            return MaaFramework.Binding.Interop.Native.MaaTasker.MaaTaskerSetOption(
+                tasker.Handle, autoInactive, value, (ulong)value.Length);
+        }
+        finally
+        {
+            GC.KeepAlive(tasker);
+        }
+    }
+
+    private void PauseQueueAutoInactive(MaaTasker tasker)
+    {
+        if (!OperatingSystem.IsWindows() || ViewModel?.CurrentController != MaaControllerTypes.Win32)
+            return;
+
+        lock (_queueAutoInactiveLock)
+        {
+            if (ReferenceEquals(_queueAutoInactiveTasker, tasker))
+                return;
+
+            RestoreQueueAutoInactive();
+            try
+            {
+                // 旧内核返回 false，继续沿用原行为。
+                if (!SetTaskerAutoInactive(tasker, false))
+                    return;
+
+                _queueAutoInactiveTasker = tasker;
+                LoggerHelper.Info("已暂停队列 Tasker 自动失活。");
+            }
+            catch (Exception ex)
+            {
+                LoggerHelper.Warning($"暂停队列 Tasker 自动失活失败：{ex.Message}");
+            }
+        }
+    }
+
+    private void RestoreQueueAutoInactive()
+    {
+        lock (_queueAutoInactiveLock)
+        {
+            // 只恢复成功暂停的实例，不读取可能已替换的 MaaTasker。
+            var tasker = _queueAutoInactiveTasker;
+            if (tasker == null)
+                return;
+
+            try
+            {
+                if (!SetTaskerAutoInactive(tasker, true))
+                    LoggerHelper.Warning("恢复队列 Tasker 自动失活选项失败。");
+
+                var result = tasker.Controller?.Inactive().Wait();
+                if (result != MaaJobStatus.Succeeded)
+                    LoggerHelper.Warning($"队列结束后控制器失活失败：{result}");
+                else
+                    LoggerHelper.Info("已恢复队列 Tasker 自动失活并完成控制器失活。");
+            }
+            catch (Exception ex)
+            {
+                LoggerHelper.Warning($"恢复队列 Tasker 自动失活失败：{ex.Message}");
+            }
+            finally
+            {
+                _queueAutoInactiveTasker = null;
+            }
+        }
     }
 
     async private Task RunScript(string str = "Prescript")
@@ -4580,6 +4662,7 @@ public class MaaProcessor
                         }
 
                     }
+                    RestoreQueueAutoInactive();
                     HandleStopResult(status, stopResult, onlyStart, queueCompleted, action, isUpdateRelated);
                     DispatcherHelper.PostOnMainThread(() =>
                     {
