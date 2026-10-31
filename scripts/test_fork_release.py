@@ -21,12 +21,12 @@ def info_for(tag="v2.14.0", sequence=7):
 
 
 class BuildMetadataTests(unittest.TestCase):
-    def test_display_version_uses_our_sequence_for_every_upstream_channel(self):
+    def test_display_version_preserves_upstream_tag_and_our_sequence(self):
         for upstream, expected in (
-            ("v2.16.3-beta.1", "v2.16.3-MFABD2.beta.7 · 00000a"),
-            ("v2.16.3-beta.5", "v2.16.3-MFABD2.beta.7 · 00000a"),
+            ("v2.16.3-beta.1", "v2.16.3-beta.1-MFABD2.beta.7 · 00000a"),
+            ("v2.16.3-beta.5", "v2.16.3-beta.5-MFABD2.beta.7 · 00000a"),
             ("v2.16.3", "v2.16.3-MFABD2.beta.7 · 00000a"),
-            ("v2.16.3-rc.2+build.7", "v2.16.3-MFABD2.beta.7 · 00000a"),
+            ("v2.16.3-rc.2+build.7", "v2.16.3-rc.2+build.7-MFABD2.beta.7 · 00000a"),
         ):
             with self.subTest(upstream=upstream):
                 self.assertEqual(expected, fork_release.display_version(info_for(upstream)))
@@ -36,17 +36,16 @@ class BuildMetadataTests(unittest.TestCase):
             with self.subTest(upstream=upstream):
                 info = info_for(upstream)
                 self.assertEqual(info["short_commit"], "00000a")
-                self.assertEqual(info["tag"], "v2.14.0-MFABD2.beta.7")
-                self.assertEqual(info["upstream_version"], "v2.14.0")
+                self.assertEqual(info["tag"], f"{upstream}-MFABD2.beta.7")
+                self.assertEqual(info["upstream_version"], upstream)
                 self.assertNotIn("upstream_tag", info)
                 self.assertEqual(fork_release.version_tag(info), info["tag"])
                 self.assertEqual(fork_release.validate_info(info), info)
 
-    def test_release_body_has_only_numeric_upstream_baseline_and_no_duplicate_title(self):
+    def test_release_body_preserves_full_upstream_tag_without_duplicate_title(self):
         info = info_for("v2.16.3-beta.1", 6)
         body = fork_release.release_notes(info, "12345")
-        self.assertIn("上游基础版本：`v2.16.3`", body)
-        self.assertNotIn("v2.16.3-beta.1", body)
+        self.assertIn("上游基础版本：`v2.16.3-beta.1`", body)
         self.assertNotIn(fork_release.display_version(info), body)
         self.assertFalse(any(line.startswith("# ") for line in body.splitlines()))
 
@@ -94,6 +93,11 @@ class BuildMetadataTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     fork_release.check_context(info)
 
+    def test_malformed_upstream_tags_cannot_become_release_names(self):
+        for upstream in ("v2.16.3-", "v2.16.3-beta..1", "v2.16.3+", "v2.16.3 beta.1", "v2.16.3/beta.1"):
+            with self.subTest(upstream=upstream), self.assertRaises(ValueError):
+                info_for(upstream)
+
 
 class ForkSequenceTests(unittest.TestCase):
     def test_first_release_starts_at_one(self):
@@ -101,25 +105,33 @@ class ForkSequenceTests(unittest.TestCase):
 
     def test_four_legacy_builds_continue_at_five(self):
         tags = {f"v2.16.3-mfbd2.g{i:06x}": f"{i:06x}" + "a" * 34 for i in range(1, 5)}
-        self.assertEqual(5, fork_release.fork_sequence(SHA, "v2.16.3-beta.1", tags))
+        self.assertEqual(5, fork_release.fork_sequence(SHA, "v2.16.3", tags))
+        self.assertEqual(1, fork_release.fork_sequence(SHA, "v2.16.3-beta.1", tags))
 
     def test_reserved_numbers_are_not_reused_even_without_release_packages(self):
         tags = {"v2.16.3-MFABD2.beta.9": "b" * 40}
         self.assertEqual(10, fork_release.fork_sequence(SHA, "v2.16.3", tags))
 
     def test_failed_source_retry_keeps_its_reserved_number(self):
-        tags = {"v2.16.3-MFABD2.beta.5": SHA, "v2.16.3-MFABD2.beta.8": "b" * 40}
+        tags = {"v2.16.3-beta.3-MFABD2.beta.5": SHA, "v2.16.3-beta.3-MFABD2.beta.8": "b" * 40}
         self.assertEqual(5, fork_release.fork_sequence(SHA, "v2.16.3-beta.3", tags))
 
     def test_new_upstream_base_starts_its_own_sequence(self):
         tags = {"v2.16.3-MFABD2.beta.9": "b" * 40, "v2.16.3-mfbd2.gbbbbbb": "b" * 40}
         self.assertEqual(1, fork_release.fork_sequence(SHA, "v2.17.0-beta.1", tags))
 
-    def test_upstream_prerelease_suffix_does_not_reset_our_sequence(self):
-        tags = {"v2.16.3-MFABD2.beta.9": "b" * 40}
-        for upstream in ("v2.16.3-beta.1", "v2.16.3-beta.99", "v2.16.3-rc.1", "v2.16.3"):
+    def test_each_complete_upstream_tag_has_its_own_sequence(self):
+        tags = {"v2.16.3-MFABD2.beta.9": "b" * 40,
+                "v2.16.3-beta.1-MFABD2.beta.3": "c" * 40,
+                "v2.16.3-rc.1+build.7-MFABD2.beta.2": "d" * 40}
+        for upstream, expected in (("v2.16.3", 10), ("v2.16.3-beta.1", 4), ("v2.16.3-beta.2", 1),
+                                   ("v2.16.3-rc.1", 1), ("v2.16.3-rc.1+build.7", 3)):
             with self.subTest(upstream=upstream):
-                self.assertEqual(10, fork_release.fork_sequence(SHA, upstream, tags))
+                self.assertEqual(expected, fork_release.fork_sequence(SHA, upstream, tags))
+
+    def test_old_numbered_source_is_not_retagged_with_a_full_upstream_version(self):
+        with self.assertRaises(ValueError):
+            fork_release.fork_sequence(SHA, "v2.16.3-beta.1", {"v2.16.3-MFABD2.beta.1": SHA})
 
     def test_conflicting_or_invalid_source_tags_are_rejected(self):
         for tags in (
@@ -195,6 +207,15 @@ class GitBaselineTests(unittest.TestCase):
         self.assertEqual("v2.16.3-beta.1", fork_release.upstream_tag_at("HEAD"))
         self.assertEqual({"v2.16.3-MFABD2.beta.7": self.git("rev-parse", "HEAD")}, fork_release.fork_tags())
 
+    def test_full_upstream_tags_and_legacy_tags_are_collected(self):
+        tags = ("v2.16.3-beta.1-MFABD2.beta.2", "v2.16.3-rc.1+build.7-MFABD2.beta.3",
+                "v2.16.3-mfbd2.g00000a")
+        for tag in tags:
+            self.git("tag", f"fork/{tag}")
+        self.git("tag", "fork/v2.16.3-beta_1-MFABD2.beta.4")
+        sha = self.git("rev-parse", "HEAD")
+        self.assertEqual({tag: sha for tag in tags}, fork_release.fork_tags())
+
     def test_metadata_reserves_our_sequence_without_querying_upstream_releases(self):
         sha = self.git("rev-parse", "HEAD")
         output = Path(self.temp) / "output.txt"
@@ -212,7 +233,7 @@ class GitBaselineTests(unittest.TestCase):
             if "/commits/" in path:
                 return {"sha": sha}
             if method == "POST":
-                self.assertEqual(payload, {"ref": "refs/tags/v2.16.3-MFABD2.beta.1", "sha": sha})
+                self.assertEqual(payload, {"ref": "refs/tags/v2.16.3-beta.1-MFABD2.beta.1", "sha": sha})
                 return {}
             self.assertTrue(missing_ok)
             return None
@@ -239,7 +260,7 @@ class PackageTests(unittest.TestCase):
         return root
 
     def test_package_creates_stamped_zip_and_tar_and_preserves_unix_executable_mode(self):
-        info = info_for()
+        info = info_for("v2.16.5-beta.1")
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             win_root = self.make_publish_dir(base / "win", "win-x64")

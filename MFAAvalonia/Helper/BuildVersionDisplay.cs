@@ -67,7 +67,8 @@ public static class BuildVersionDisplay
             {
                 var upstream = ReadString(root, "upstream_version");
                 if (!repository.Equals("sunyink/MFAAvalonia", StringComparison.OrdinalIgnoreCase)
-                    || upstream == null || !Regex.IsMatch(upstream, "\\Av[0-9]+\\.[0-9]+\\.[0-9]+\\z")
+                    || upstream == null || !Regex.IsMatch(upstream,
+                        "\\Av[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\z")
                     || sequence == null || tag != $"{upstream}-MFABD2.beta.{sequence}")
                     return null;
                 return $"{tag} · {shortCommit}";
@@ -90,7 +91,7 @@ public static class BuildVersionDisplay
             "\\Av(?<base>[0-9]+\\.[0-9]+\\.[0-9]+)(?:-(?<pre>[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\z");
         if (!version.Success || tag != $"v{version.Groups["base"].Value}-mfbd2.g{shortCommit}" || sequence == null)
             return tag;
-        // Only the numeric baseline comes from upstream. The beta counter is
+        // Historical schema-1 packages used only the numeric baseline. The beta counter is
         // reserved by our own Git tag and shared with the release/package metadata.
         // This label never enters the updater or PI_CLIENT_VERSION.
         return $"v{version.Groups["base"].Value}-MFABD2.beta.{sequence} · {shortCommit}";

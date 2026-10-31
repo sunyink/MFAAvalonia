@@ -27,19 +27,25 @@ public class BuildVersionDisplayTests
     }
 
     [Theory]
-    [InlineData(6)]
-    [InlineData(10)]
-    public void NumberedReleaseUsesOneVersionForTheTagAndClient(int sequence)
+    [InlineData("v2.16.3", 6)]
+    [InlineData("v2.16.3", 10)]
+    [InlineData("v2.16.5-beta.1", 1)]
+    [InlineData("v2.16.5-beta.2", 2)]
+    [InlineData("v2.16.5-rc.1+build.7", 1)]
+    public void NumberedReleaseUsesOneVersionForTheTagAndClient(string upstream, int sequence)
     {
         var manifest = JsonSerializer.Serialize(new { schema = 2, repository = "sunyink/MFAAvalonia",
-            commit = Commit, short_commit = Commit[..6], upstream_version = "v2.16.3", fork_sequence = sequence,
-            tag = $"v2.16.3-MFABD2.beta.{sequence}" });
-        Assert.Equal($"v2.16.3-MFABD2.beta.{sequence} · fb5b80",
+            commit = Commit, short_commit = Commit[..6], upstream_version = upstream, fork_sequence = sequence,
+            tag = $"{upstream}-MFABD2.beta.{sequence}" });
+        Assert.Equal($"{upstream}-MFABD2.beta.{sequence} · fb5b80",
             BuildVersionDisplay.ResolveLabel(null, $"2.14.0+{Commit}", manifest));
     }
 
     [Theory]
     [InlineData("v2.16.3-beta.1", 6, "v2.16.3-MFABD2.beta.6")]
+    [InlineData("v2.16.5-beta.1", 1, "v2.16.5-beta.2-MFABD2.beta.1")]
+    [InlineData("v2.16.5-beta..1", 1, "v2.16.5-beta..1-MFABD2.beta.1")]
+    [InlineData("v2.16.5+", 1, "v2.16.5+-MFABD2.beta.1")]
     [InlineData("v2.16.4", 6, "v2.16.3-MFABD2.beta.6")]
     [InlineData("v2.16.3", 5, "v2.16.3-MFABD2.beta.6")]
     [InlineData("v2.16.3", 0, "v2.16.3-MFABD2.beta.0")]
@@ -60,7 +66,7 @@ public class BuildVersionDisplayTests
     [InlineData(null, "v2.16.3-mfbd2.gfb5b80")]
     [InlineData("bad version", "v2.16.3-mfbd2.gfb5b80")]
     [InlineData("v2.17.0-beta.1", "v2.16.3-mfbd2.gfb5b80")]
-    public void ForkLabelUsesOnlyUpstreamNumericVersionAndOurOwnSequence(string? upstream, string expected)
+    public void LegacyForkLabelKeepsItsHistoricalNumericVersion(string? upstream, string expected)
     {
         Assert.Equal(expected, BuildVersionDisplay.ResolveLabel(null, $"2.14.0+{Commit}", Manifest(upstream: upstream, sequence: 7)));
     }

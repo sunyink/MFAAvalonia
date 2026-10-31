@@ -18,8 +18,10 @@ STAMP = "mfaa-build.json"
 MANIFEST = "fork-release.json"
 STATE = Path("fork-release-state.json")
 UPSTREAM_VERSION = re.compile(
-    r"v(\d+\.\d+\.\d+)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
+NUMBERED_TAG = re.compile(rf"(?P<upstream>{UPSTREAM_VERSION.pattern})-MFABD2\.beta\.(?P<number>[1-9]\d*)")
+LEGACY_TAG = re.compile(r"v\d+\.\d+\.\d+-mfbd2\.g[0-9a-f]{6}")
 
 
 def command(*args, **kwargs):
@@ -45,7 +47,7 @@ def validate_info(info):
     sha = info.get("commit", "")
     short = info.get("short_commit", "")
     upstream = info.get("upstream_version", "")
-    base = re.fullmatch(r"v(\d+\.\d+\.\d+)", upstream)
+    base = UPSTREAM_VERSION.fullmatch(upstream)
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or short != sha[:6] or not base:
         raise ValueError("Invalid commit or upstream version")
     sequence = info.get("fork_sequence")
@@ -57,13 +59,12 @@ def validate_info(info):
 
 
 def build_info(sha, upstream, sequence):
-    base = UPSTREAM_VERSION.fullmatch(upstream)
-    if not base:
+    if not UPSTREAM_VERSION.fullmatch(upstream):
         raise ValueError("No recognizable upstream version tag")
     return validate_info(dict(schema=2, repository=REPOSITORY, branch=BRANCH,
-                              commit=sha, short_commit=sha[:6], upstream_version=f"v{base[1]}",
+                              commit=sha, short_commit=sha[:6], upstream_version=upstream,
                               fork_sequence=sequence,
-                              tag=f"v{base[1]}-MFABD2.beta.{sequence}"))
+                              tag=f"{upstream}-MFABD2.beta.{sequence}"))
 
 
 def read_info():
@@ -100,29 +101,27 @@ def fork_tags():
     result = {}
     for ref in command("git", "for-each-ref", "--format=%(refname)", "refs/tags/fork/").splitlines():
         name = ref.removeprefix("refs/tags/fork/")
-        if re.fullmatch(r"v\d+\.\d+\.\d+-(?:MFABD2\.beta\.[1-9]\d*|mfbd2\.g[0-9a-f]{6})", name):
+        if NUMBERED_TAG.fullmatch(name) or LEGACY_TAG.fullmatch(name):
             result[name] = command("git", "rev-parse", f"{ref}^{{commit}}")
     return result
 
 
 def fork_sequence(sha, upstream, tags):
-    base = UPSTREAM_VERSION.fullmatch(upstream)
-    if not base:
+    if not UPSTREAM_VERSION.fullmatch(upstream):
         raise ValueError("No recognizable upstream version tag")
-    baseline = f"v{base[1]}"
     reserved = []
     maximum = 0
     package_count = 0
     for tag, commit in tags.items():
-        number = re.fullmatch(r"(v\d+\.\d+\.\d+)-MFABD2\.beta\.([1-9]\d*)", tag)
+        number = NUMBERED_TAG.fullmatch(tag)
         if number:
             if commit == sha:
-                if number[1] != baseline:
+                if number["upstream"] != upstream:
                     raise ValueError("This source already has a reserved fork version under another baseline")
-                reserved.append(int(number[2]))
-            if number[1] == baseline:
-                maximum = max(maximum, int(number[2]))
-        elif re.fullmatch(rf"{re.escape(baseline)}-mfbd2\.g[0-9a-f]{{6}}", tag):
+                reserved.append(int(number["number"]))
+            if number["upstream"] == upstream:
+                maximum = max(maximum, int(number["number"]))
+        elif re.fullmatch(rf"{re.escape(upstream)}-mfbd2\.g[0-9a-f]{{6}}", tag):
             # The package count supplies a floor for pre-numbering builds.
             # Keep their tags, including after a release is removed.
             if not tag.endswith(f".g{commit[:6]}"):
