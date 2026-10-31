@@ -1249,6 +1249,18 @@ public class MaaProcessor
     private MFATask.MFATaskStatus Status = MFATask.MFATaskStatus.NOT_STARTED;
     private int _stopCompletionMessageHandled;
     private const int ActionFailedLimit = 20;
+
+    internal void OnAgentUnavailable(AgentContext context)
+    {
+        if (!_agentStarted || !_agentContexts.Contains(context))
+            return;
+
+        _agentStarted = false;
+        LoggerHelper.Error("Agent 通道已断开，已取消当前任务队列。");
+        AddLogByKey(LangKeys.AgentStartFailed, Brushes.OrangeRed, changeColor: false);
+        CancellationTokenSource?.SafeCancel();
+        _emulatorCancellationTokenSource?.SafeCancel();
+    }
     private int _screencapFailedCount;
     private readonly Lock _screencapLogLock = new();
     private bool _screencapAbortLogPending;
@@ -1700,6 +1712,13 @@ public class MaaProcessor
                 return null;
             }
 
+            if (!await WaitForScreenshotFrameAsync(tasker, token))
+            {
+                LoggerHelper.Warning("截图控制器已连接，但首帧缓存仍为空。");
+                tasker.Dispose();
+                return null;
+            }
+
             return tasker;
         }
         catch (Exception ex)
@@ -1707,6 +1726,23 @@ public class MaaProcessor
             LoggerHelper.Warning($"截图任务执行器初始化失败：{ex.Message}");
             return null;
         }
+    }
+
+    private static async Task<bool> WaitForScreenshotFrameAsync(MaaTasker tasker, CancellationToken token)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            using (var imageBuffer = new MaaImageBuffer())
+            {
+                if (tasker.GetCachedImage(imageBuffer) && !imageBuffer.IsEmpty)
+                    return true;
+            }
+
+            await Task.Delay(250, token);
+        }
+
+        return false;
     }
 
     private void ConfigureScreenshotTasker(MaaTasker tasker)
@@ -4074,7 +4110,9 @@ public class MaaProcessor
         //
         // var tasks = JsonConvert.DeserializeObject<Dictionary<string, MaaNode>>(json, settings);
         // tasks = tasks.MergeMaaNodes(taskModels);
-        LoggerHelper.Info($"[任务管线合并] 任务#{index} 名称=[{task.Name ?? task.InterfaceItem?.Name ?? "<未命名>"}] 入口=[{task.InterfaceItem?.Entry ?? "<空>"}] 参数={taskParams}");
+        var logParams = Interface?.Option?.Values.Any(option => option.Inputs?.Any(input => input.IsPassword) == true) == true
+            ? "[REDACTED]" : taskParams;
+        LoggerHelper.Info($"[任务管线合并] 任务#{index} 名称=[{task.Name ?? task.InterfaceItem?.Name ?? "<未命名>"}] 入口=[{task.InterfaceItem?.Entry ?? "<空>"}] 参数={logParams}");
         return new NodeAndParam
         {
             Index = index,
@@ -5089,10 +5127,7 @@ public class MaaProcessor
 
         if (displayExpand is { Count: 2 } && displayExpand[0] > 0 && displayExpand[1] > 0)
         {
-            // MaaFramework 5.14 exposes this option in the native enum; the older
-            // managed binding used by this project has not named the enum member yet.
-            const ControllerOption screenshotTargetExpand = (ControllerOption)8;
-            if (!controller.SetOption(screenshotTargetExpand, displayExpand.ToArray()))
+            if (!controller.SetScreenshotTargetExpand(displayExpand[0], displayExpand[1]))
                 LoggerHelper.Warning("设置 display_expand 截图选项失败。");
             return;
         }
