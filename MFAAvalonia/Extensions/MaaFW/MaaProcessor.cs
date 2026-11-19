@@ -1577,7 +1577,7 @@ public class MaaProcessor
         if (controllerType == MaaControllerTypes.Adb && adbSnapshot == null)
             return null;
 
-        MaaController controller = null;
+        MaaController? controller = null;
         try
         {
             controller = await TaskManager.RunTaskAsync(() =>
@@ -1586,19 +1586,14 @@ public class MaaProcessor
                 return InitializeController(controllerType, logConfig: false, adbSnapshot, LinkOption.None);
             }, token: token, name: "截图控制器检测", catchException: true, shouldLog: false, noMessage: true);
 
+            if (controller == null)
+                return null;
             ApplyScreenshotOptions(controller, GetCurrentInterfaceController());
         }
         catch (Exception ex)
         {
             LoggerHelper.Warning($"截图控制器初始化失败：{ex.Message}");
-            try
-            {
-                controller?.Dispose();
-            }
-            catch (Exception disposeEx)
-            {
-                LoggerHelper.Warning($"释放截图控制器失败：{disposeEx.Message}");
-            }
+            DisposeQuietly(controller, "截图控制器");
             return null;
         }
         try
@@ -1607,7 +1602,7 @@ public class MaaProcessor
             var linkStatus = controller.LinkStart().Wait();
             if (linkStatus != MaaJobStatus.Succeeded)
             {
-                controller.Dispose();
+                DisposeQuietly(controller, "截图控制器");
                 return null;
             }
 
@@ -1616,6 +1611,7 @@ public class MaaProcessor
         catch (Exception ex)
         {
             LoggerHelper.Warning($"截图控制器连接失败：{ex.Message}");
+            DisposeQuietly(controller, "截图控制器");
             return null;
         }
     }
@@ -1710,19 +1706,20 @@ public class MaaProcessor
         // MaaTaskerCreate aborted the whole app. Keep a reference to every native object from the
         // moment it exists, and release all of them on every failure path.
         MaaTasker? tasker = null;
+        var initialized = false;
         try
         {
             token.ThrowIfCancellationRequested();
 
-            // Placeholders cannot throw, so the tasker reference is held before binding can fail.
+            // Hold the tasker reference before assigning optional properties or real bindings.
             tasker = new MaaTasker
             {
                 Controller = MaaController.Null,
                 Resource = MaaResource.Null,
-                Toolkit = MaaProcessor.Toolkit,
-                Global = MaaProcessor.Global,
                 DisposeOptions = DisposeOptions.None,
             };
+            tasker.Toolkit = MaaProcessor.Toolkit;
+            tasker.Global = MaaProcessor.Global;
             tasker.Resource = maaResource;
             tasker.Controller = controller;
             tasker.DisposeOptions = DisposeOptions.All;
@@ -1732,31 +1729,36 @@ public class MaaProcessor
             var linkStatus = tasker.Controller?.LinkStart().Wait();
             if (linkStatus != MaaJobStatus.Succeeded)
             {
-                tasker.Dispose();
                 return null;
             }
 
             if (!await WaitForScreenshotFrameAsync(tasker, token))
             {
                 LoggerHelper.Warning("截图控制器已连接，但首帧缓存仍为空。");
-                tasker.Dispose();
                 return null;
             }
 
+            initialized = true;
             return tasker;
         }
         catch (Exception ex)
         {
             LoggerHelper.Warning($"截图任务执行器初始化失败：{ex.Message}");
-            if (tasker != null)
-            {
-                // Release ownership first so controller/resource are disposed exactly once below.
-                tasker.DisposeOptions = DisposeOptions.None;
-                DisposeQuietly(tasker, "截图任务执行器");
-            }
-            DisposeQuietly(controller, "截图控制器");
-            DisposeQuietly(maaResource, "截图资源");
             return null;
+        }
+        finally
+        {
+            if (!initialized)
+            {
+                if (tasker != null)
+                {
+                    // Keep child ownership here so one failed disposal cannot skip the other handles.
+                    tasker.DisposeOptions = DisposeOptions.None;
+                    DisposeQuietly(tasker, "截图任务执行器");
+                }
+                DisposeQuietly(controller, "截图控制器");
+                DisposeQuietly(maaResource, "截图资源");
+            }
         }
     }
 
@@ -2415,7 +2417,7 @@ public class MaaProcessor
     /// after the native handle exists, so a failed link leaks a controller (and its worker thread)
     /// that the caller can never dispose.
     /// </param>
-    private MaaController InitializeController(MaaControllerTypes controllerType, bool logConfig, AdbControllerSnapshot? adbSnapshot = null, LinkOption link = LinkOption.Start)
+    private MaaController InitializeController(MaaControllerTypes controllerType, bool logConfig, AdbControllerSnapshot? adbSnapshot = null, LinkOption? link = null)
     {
         ConnectToMAA(logConfig);
 
@@ -2456,7 +2458,7 @@ public class MaaProcessor
                     adbSnapshot.ScreenCap, adbSnapshot.Input,
                     adbSnapshot.Config,
                     Path.Combine(AppPaths.InstallRoot, "libs", "MaaAgentBinary"),
-                    link
+                    link ?? LinkOption.Start
                 );
                 _adbControllerSnapshots.Add(adbController, adbSnapshot);
                 return adbController;
@@ -2468,7 +2470,7 @@ public class MaaProcessor
                     LoggerHelper.Info($"PlayCover BundleId：{Config.PlayCover.UUID}");
                 }
 
-                return new MaaPlayCoverController(Config.PlayCover.PlayCoverAddress, Config.PlayCover.UUID, link);
+                return new MaaPlayCoverController(Config.PlayCover.PlayCoverAddress, Config.PlayCover.UUID, link ?? LinkOption.Start);
 
             case MaaControllerTypes.MacOS:
                 if (logConfig)
@@ -2484,7 +2486,7 @@ public class MaaProcessor
                     Config.MacOSWindow.WindowId,
                     Config.MacOSWindow.ScreenCap,
                     Config.MacOSWindow.Input,
-                    Config.MacOSWindow.Link,
+                    link ?? Config.MacOSWindow.Link,
                     Config.MacOSWindow.Check);
 
             case MaaControllerTypes.WlRoots:
@@ -2498,7 +2500,7 @@ public class MaaProcessor
                 return new MaaWlRootsController(
                     Config.WlRoots.SocketPath,
                     Config.WlRoots.UseWin32VirtualKeyCodes,
-                    Config.WlRoots.Link,
+                    link ?? Config.WlRoots.Link,
                     Config.WlRoots.Check);
 
             case MaaControllerTypes.Gamepad:
@@ -2512,7 +2514,7 @@ public class MaaProcessor
                 }
 
                 return new MaaGamepadController(Config.DesktopWindow.HWnd, Config.Gamepad.Type,
-                    Config.Gamepad.ScreenCap, Config.DesktopWindow.Link, Config.DesktopWindow.Check);
+                    Config.Gamepad.ScreenCap, link ?? Config.DesktopWindow.Link, Config.DesktopWindow.Check);
 
             case MaaControllerTypes.Win32:
             default:
@@ -2530,7 +2532,7 @@ public class MaaProcessor
                 return new MaaWin32Controller(
                     Config.DesktopWindow.HWnd,
                     Config.DesktopWindow.ScreenCap, Config.DesktopWindow.Mouse, Config.DesktopWindow.KeyBoard,
-                    Config.DesktopWindow.Link,
+                    link ?? Config.DesktopWindow.Link,
                     Config.DesktopWindow.Check);
         }
     }
@@ -4343,6 +4345,10 @@ public class MaaProcessor
     {
         if (maa == null || task == null) return MaaJobStatus.Invalid;
 
+        // Bootstrap the first boundary before posting a potentially instant
+        // real task. Later boundaries are already protected by the previous hold.
+        if (ShouldUseQueueHold(maa) && _queueHold.Outstanding == null)
+            _queueHold.Replace(PostQueueHold(maa, param));
         var job = maa.AppendTask(task, param ?? "{}");
         // 先投真任务、再投它的占位、最后放行上一个占位：内核在任务之间看到的队列始终不空。
         // 真任务没投进去时保留上一个占位，由下一个真任务或队列收尾放行。
@@ -4416,7 +4422,21 @@ public class MaaProcessor
 
         if (!await QueueHoldCoordinator.WaitForExitAsync(ticket, QueueHold.ExitWaitTimeout, TimeSpan.FromMilliseconds(20), token)
             && !token.IsCancellationRequested)
-            LoggerHelper.Warning($"放行队列占位后等待 Tasker 空闲超时（{reason}）：seq={ticket.Seq}, task_id={ticket.JobId}");
+        {
+            LoggerHelper.Warning($"放行队列占位后等待 Tasker 空闲失败（{reason}）：seq={ticket.Seq}, task_id={ticket.JobId}，停止任务执行器");
+            // Do not report successful completion while the window may still
+            // be held inactive. Stop explicitly and let the normal failure path run.
+            Status = MFATask.MFATaskStatus.STOPPED;
+            CancellationTokenSource.SafeCancel();
+            try
+            {
+                await Task.Run(() => MaaTasker?.Stop().Wait());
+            }
+            catch (Exception ex)
+            {
+                LoggerHelper.Error("队列占位收尾失败", ex);
+            }
+        }
     }
 
     private static bool IsQueueHoldCallback(JObject details)

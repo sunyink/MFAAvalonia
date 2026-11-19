@@ -55,6 +55,7 @@ public static class LangKeys
 	public static readonly string ButtonClose = "ButtonClose";
 	public static readonly string ButtonSave = "ButtonSave";
 	public static readonly string CannotStart = "CannotStart";
+	public static readonly string TaskStartValidationFailure = "TaskStartValidationFailure";
 	public static readonly string CaptureModeOption = "CaptureModeOption";
 	public static readonly string CheckMFA = "CheckMFA";
 	public static readonly string CheckUpdate = "CheckUpdate";
@@ -836,4 +837,5 @@ public static class LangKeys
 	public static readonly string OptionDefaultCaseUnavailable = "OptionDefaultCaseUnavailable";
 	public static readonly string TaskExecutionBlockedByOptions = "TaskExecutionBlockedByOptions";
 	public static readonly string TaskSkippedInvalidOptions = "TaskSkippedInvalidOptions";
+	public static readonly string ExportLogSplitArchive = "ExportLogSplitArchive";
 }
